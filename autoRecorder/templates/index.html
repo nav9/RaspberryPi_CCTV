@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPi DVR Remote</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            width: 100%;
+            max-width: 500px;
+        }
+        h1 { color: #bb86fc; }
+        .status-box {
+            background-color: #1e1e1e;
+            border: 1px solid #333;
+            border-left: 4px solid #03dac6;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+        .status-box p { margin: 5px 0; }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        button {
+            padding: 25px;
+            font-size: 1.2em;
+            font-weight: bold;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            color: white;
+            transition: transform 0.1s ease;
+        }
+        button:active { transform: scale(0.95); }
+        .btn-save { background-color: #03dac6; color: #121212; }
+        .btn-restart { background-color: #3700b3; }
+        .btn-reboot { background-color: #cf6679; }
+        .btn-shutdown { background-color: #b00020; }
+        .resolution-form {
+            grid-column: 1 / -1; /* Span full width */
+            background-color: #1e1e1e;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        select, .resolution-form button {
+            padding: 10px;
+            font-size: 1em;
+            border-radius: 8px;
+            border: 1px solid #444;
+            background-color: #333;
+            color: white;
+        }
+        #message {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #333;
+            border-radius: 8px;
+            min-height: 1.5em;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>RPi DVR Remote</h1>
+
+        <div class="status-box">
+            <p><strong>Status:</strong> <span id="status">...</span></p>
+            <p><strong>Uptime:</strong> <span id="uptime">...</span>s</p>
+            <p><strong>Buffer:</strong> <span id="buffer">...</span></p>
+        </div>
+
+        <div class="grid">
+            <button class="btn-save" onclick="callApi('/api/save')">Save to Disk</button>
+            <button class="btn-restart" onclick="callApi('/api/restart', true, 'Restart Capture?')">Restart Capture</button>
+            
+            <div class="resolution-form">
+                <select id="resolutionSelect">
+                    <option value="640x480">640x480</option>
+                    <option value="320x240">320x240</option>
+                    <option value="160x120">160x120</option>
+                </select>
+                <button onclick="changeResolution()">Set Resolution</button>
+            </div>
+            
+            <button class="btn-reboot" onclick="callApi('/api/reboot', true, 'Reboot Pi?')">Reboot Pi</button>
+            <button class="btn-shutdown" onclick="callApi('/api/shutdown', true, 'Shutdown Pi?')">Shutdown Pi</button>
+        </div>
+        
+        <div id="message"></div>
+    </div>
+
+    <script>
+        const statusEl = document.getElementById('status');
+        const uptimeEl = document.getElementById('uptime');
+        const bufferEl = document.getElementById('buffer');
+        const messageEl = document.getElementById('message');
+        const resolutionSelect = document.getElementById('resolutionSelect');
+
+        async function callApi(endpoint, confirmAction = false, confirmText = 'Are you sure?') {
+            if (confirmAction && !confirm(confirmText)) {
+                return;
+            }
+            try {
+                const response = await fetch(endpoint);
+                const data = await response.json();
+                messageEl.textContent = data.message;
+            } catch (error) {
+                messageEl.textContent = `Error: ${error.message}`;
+            }
+        }
+        
+        async function changeResolution() {
+            if (!confirm('This will restart the capture. Continue?')) return;
+            
+            const resolution = resolutionSelect.value;
+            try {
+                const response = await fetch('/api/change_resolution', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ resolution: resolution })
+                });
+                const data = await response.json();
+                messageEl.textContent = data.message;
+            } catch (error) {
+                messageEl.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        function updateStatus() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    statusEl.textContent = data.status;
+                    uptimeEl.textContent = `${Math.floor(data.uptime)}s`;
+                    bufferEl.textContent = `${data.buffered_segments}/${data.max_segments} (${data.buffer_size_mb.toFixed(2)} MB)`;
+                    resolutionSelect.value = data.resolution;
+                })
+                .catch(err => {
+                    statusEl.textContent = "Connection Lost";
+                });
+        }
+
+        setInterval(updateStatus, 2000); // Update status every 2 seconds
+        updateStatus(); // Initial update
+    </script>
+</body>
+</html>
